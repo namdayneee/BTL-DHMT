@@ -1,0 +1,20 @@
+# depslib dependency file v1.0
+1778486632 source:d:\study\hk252\dhmt\btl-dhmt\main.cpp
+	<windows.h>
+	<GL/glut.h>
+	<math.h>
+	<vector>
+	<iostream>
+	<string>
+	<cstdlib>
+
+976695772 c:\users\home\downloads\openglforcodeblocks\include\gl\glut.h
+	<windows.h>
+	<GL/gl.h>
+	<GL/glu.h>
+
+893404800 c:\users\home\downloads\openglforcodeblocks\include\gl\gl.h
+
+893404800 c:\users\home\downloads\openglforcodeblocks\include\gl\glu.h
+	<GL/gl.h>
+
