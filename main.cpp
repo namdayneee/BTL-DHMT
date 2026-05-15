@@ -9,10 +9,10 @@
 using namespace std;
 
 // =============================================================================
-// THONG TIN SINH VIEN (BAT BUOC THAY DOI)
+// THONG TIN SINH VIEN 
 // =============================================================================
-#define STUDENT_NAME "Nguyen Van A"
-#define STUDENT_ID   "220001"
+#define STUDENT_NAME "Nguyen Dinh Nam"
+#define STUDENT_ID   "2212136"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -30,18 +30,26 @@ struct Face {
 class Mesh {
 public:
     vector<Point3> vertices;
+    vector<Point3> vertexNormals;
     vector<Face> faces;
 
-    void draw() {
+    void draw(bool smooth) {
         for (int i = 0; i < (int)faces.size(); ++i) {
             Face &f = faces[i];
             if (f.vIndices.size() < 3) {
                 continue;
             }
             glBegin(GL_POLYGON);
-            glNormal3f(f.nx, f.ny, f.nz);
+            if (!smooth) {
+                glNormal3f(f.nx, f.ny, f.nz);
+            }
             for (int j = 0; j < (int)f.vIndices.size(); ++j) {
-                const Point3 &p = vertices[f.vIndices[j]];
+                int vid = f.vIndices[j];
+                if (smooth && vid >= 0 && vid < (int)vertexNormals.size()) {
+                    const Point3 &vn = vertexNormals[vid];
+                    glNormal3f(vn.x, vn.y, vn.z);
+                }
+                const Point3 &p = vertices[vid];
                 glVertex3f(p.x, p.y, p.z);
             }
             glEnd();
@@ -49,6 +57,8 @@ public:
     }
 
     void calculateNormals() {
+        vertexNormals.assign(vertices.size(), Point3{0.0f, 0.0f, 0.0f});
+
         for (int i = 0; i < (int)faces.size(); ++i) {
             Face &f = faces[i];
             if (f.vIndices.size() < 3) {
@@ -75,23 +85,58 @@ public:
                 f.ny /= len;
                 f.nz /= len;
             }
+
+            for (int j = 0; j < (int)f.vIndices.size(); ++j) {
+                int vid = f.vIndices[j];
+                if (vid >= 0 && vid < (int)vertexNormals.size()) {
+                    vertexNormals[vid].x += f.nx;
+                    vertexNormals[vid].y += f.ny;
+                    vertexNormals[vid].z += f.nz;
+                }
+            }
+        }
+
+        for (int i = 0; i < (int)vertexNormals.size(); ++i) {
+            float len = (float)sqrt(
+                vertexNormals[i].x * vertexNormals[i].x +
+                vertexNormals[i].y * vertexNormals[i].y +
+                vertexNormals[i].z * vertexNormals[i].z
+            );
+            if (len > 1e-6f) {
+                vertexNormals[i].x /= len;
+                vertexNormals[i].y /= len;
+                vertexNormals[i].z /= len;
+            } else {
+                vertexNormals[i].x = 0.0f;
+                vertexNormals[i].y = 1.0f;
+                vertexNormals[i].z = 0.0f;
+            }
         }
     }
 };
 
-// --- Bien dieu khien ---
 float base_rot = 0.0f;
 float g1_rot = 0.0f;
 float g2_rot = 0.0f;
 float rotor_rot = 0.0f;
 
-// Goc camera mac dinh theo anh mau nguoi dung gui
-float cam_angle = 35.0f;
-float cam_height = 2.3f;
-float cam_dis = 20.0f;
-bool smooth_shading = true;
+float cam_angle = 76.0f;
+float cam_height = 0.6f;
+float cam_dis = 18.0f;
+bool smooth_shading = false;
 
-Mesh mCyl, mRing, mBox, mHub, mHex;
+Mesh mCyl, mRing, mBox, mHub, mHex, mPara;
+
+float clamp01(float v) {
+    if (v < 0.0f) return 0.0f;
+    if (v > 1.0f) return 1.0f;
+    return v;
+}
+
+void setDeviceColor(float r, float g, float b) {
+    float k = smooth_shading ? 1.14f : 0.84f;
+    glColor3f(clamp01(r * k), clamp01(g * k), clamp01(b * k));
+}
 
 Mesh createTorus(float inR, float outR, int sides, int rings) {
     Mesh m;
@@ -184,12 +229,49 @@ Mesh createBox(float w, float h, float d) {
     }
 
     int facesIdx[6][4] = {
-        {4, 5, 6, 7}, // +Z
-        {1, 0, 3, 2}, // -Z
-        {0, 4, 7, 3}, // -X
-        {5, 1, 2, 6}, // +X
-        {3, 7, 6, 2}, // +Y
-        {0, 1, 5, 4}  // -Y
+        {4, 5, 6, 7}, 
+        {1, 0, 3, 2}, 
+        {0, 4, 7, 3}, 
+        {5, 1, 2, 6}, 
+        {3, 7, 6, 2}, 
+        {0, 1, 5, 4}  
+    };
+
+    for (int i = 0; i < 6; ++i) {
+        Face f;
+        for (int j = 0; j < 4; ++j) {
+            f.vIndices.push_back(facesIdx[i][j]);
+        }
+        m.faces.push_back(f);
+    }
+
+    m.calculateNormals();
+    return m;
+}
+
+Mesh createParallelogramPrism(float w, float h, float d, float skew) {
+    Mesh m;
+    float hx = w * 0.5f;
+    float hy = h * 0.5f;
+    float hz = d * 0.5f;
+
+    Point3 p[8] = {
+        {-hx + skew, -hy, -hz}, { hx + skew, -hy, -hz},
+        { hx - skew,  hy, -hz}, {-hx - skew,  hy, -hz},
+        {-hx + skew, -hy,  hz}, { hx + skew, -hy,  hz},
+        { hx - skew,  hy,  hz}, {-hx - skew,  hy,  hz}
+    };
+    for (int i = 0; i < 8; ++i) {
+        m.vertices.push_back(p[i]);
+    }
+
+    int facesIdx[6][4] = {
+        {4, 5, 6, 7}, 
+        {1, 0, 3, 2}, 
+        {0, 4, 7, 3}, 
+        {5, 1, 2, 6}, 
+        {3, 7, 6, 2}, 
+        {0, 1, 5, 4}  
     };
 
     for (int i = 0; i < 6; ++i) {
@@ -275,44 +357,119 @@ void drawFloor() {
     glEnable(GL_LIGHTING);
 }
 
-void drawCenterLogo() {
-    // Logo BK voi 6 khoi luc giac, nam trong mat phang de nhin ro
-    const float cDark[3]  = {0.06f, 0.17f, 0.55f};
-    const float cMid[3]   = {0.14f, 0.35f, 0.73f};
-    const float cLight[3] = {0.14f, 0.58f, 0.90f};
-    const float cWhite[3] = {0.97f, 0.98f, 1.00f};
-    const float colors[6][3] = {
-        {cDark[0],  cDark[1],  cDark[2]},   // top-left
-        {cLight[0], cLight[1], cLight[2]},  // top-right
-        {cDark[0],  cDark[1],  cDark[2]},   // right
-        {cLight[0], cLight[1], cLight[2]},  // bottom-right
-        {cDark[0],  cDark[1],  cDark[2]},   // bottom-left
-        {cLight[0], cLight[1], cLight[2]}   // left
-    };
+void drawRibbonQuad(float ax, float ay, float bx, float by, float dx, float dy, float depth, float z) {
+    glBegin(GL_POLYGON);
+    glVertex3f(ax, ay, z);
+    glVertex3f(bx, by, z);
+    glVertex3f(bx + dx * depth, by + dy * depth, z);
+    glVertex3f(ax + dx * depth, ay + dy * depth, z);
+    glEnd();
+}
 
+void drawExtrudedRibbonQuad(float ax, float ay, float bx, float by, float dx, float dy, float depth, float zCenter, float thickness) {
+    float x0 = ax,             y0 = ay;
+    float x1 = bx,             y1 = by;
+    float x2 = bx + dx * depth, y2 = by + dy * depth;
+    float x3 = ax + dx * depth, y3 = ay + dy * depth;
+
+    float zFront = zCenter + 0.5f * thickness;
+    float zBack  = zCenter - 0.5f * thickness;
+
+    glBegin(GL_QUADS);
+    glVertex3f(x0, y0, zFront);
+    glVertex3f(x1, y1, zFront);
+    glVertex3f(x2, y2, zFront);
+    glVertex3f(x3, y3, zFront);
+    glEnd();
+
+    glBegin(GL_QUADS);
+    glVertex3f(x3, y3, zBack);
+    glVertex3f(x2, y2, zBack);
+    glVertex3f(x1, y1, zBack);
+    glVertex3f(x0, y0, zBack);
+    glEnd();
+
+    glBegin(GL_QUADS);
+    glVertex3f(x0, y0, zFront); glVertex3f(x1, y1, zFront); glVertex3f(x1, y1, zBack);  glVertex3f(x0, y0, zBack);
+    glVertex3f(x1, y1, zFront); glVertex3f(x2, y2, zFront); glVertex3f(x2, y2, zBack);  glVertex3f(x1, y1, zBack);
+    glVertex3f(x2, y2, zFront); glVertex3f(x3, y3, zFront); glVertex3f(x3, y3, zBack);  glVertex3f(x2, y2, zBack);
+    glVertex3f(x3, y3, zFront); glVertex3f(x0, y0, zFront); glVertex3f(x0, y0, zBack);  glVertex3f(x3, y3, zBack);
+    glEnd();
+}
+
+void drawExtrudedHex(const float hx[6], const float hy[6], float zCenter, float thickness) {
+    float zFront = zCenter + 0.5f * thickness;
+    float zBack  = zCenter - 0.5f * thickness;
+
+    glBegin(GL_POLYGON);
     for (int i = 0; i < 6; ++i) {
-        glPushMatrix();
-        glRotatef((float)(60 * i + 30), 0.0f, 0.0f, 1.0f);
-        glTranslatef(0.62f, 0.0f, 0.0f);
-        glColor3f(colors[i][0], colors[i][1], colors[i][2]);
-        glScalef(0.95f, 0.42f, 0.30f);
-        mBox.draw();
-        glPopMatrix();
+        glVertex3f(hx[i], hy[i], zFront);
+    }
+    glEnd();
+
+    glBegin(GL_POLYGON);
+    for (int i = 5; i >= 0; --i) {
+        glVertex3f(hx[i], hy[i], zBack);
+    }
+    glEnd();
+
+    glBegin(GL_QUADS);
+    for (int i = 0; i < 6; ++i) {
+        int n = (i + 1) % 6;
+        glVertex3f(hx[i], hy[i], zFront);
+        glVertex3f(hx[n], hy[n], zFront);
+        glVertex3f(hx[n], hy[n], zBack);
+        glVertex3f(hx[i], hy[i], zBack);
+    }
+    glEnd();
+}
+
+void drawCenterLogo() {
+    const float indigo[3] = {49.0f / 255.0f, 39.0f / 255.0f, 143.0f / 255.0f};
+    const float blue[3]   = {46.0f / 255.0f, 131.0f / 255.0f, 197.0f / 255.0f};
+
+    float hx[6], hy[6];
+    const float hexR = 0.43f;
+    for (int i = 0; i < 6; ++i) {
+        float a = (90.0f - 60.0f * i) * (float)M_PI / 180.0f;
+        hx[i] = hexR * (float)cos(a);
+        hy[i] = hexR * (float)sin(a);
     }
 
-    // Luc giac trang o giua
-    glColor3f(cWhite[0], cWhite[1], cWhite[2]);
-    glPushMatrix();
-    glScalef(0.55f, 0.55f, 0.24f);
-    mHex.draw();
-    glPopMatrix();
+    GLboolean lightingOn = glIsEnabled(GL_LIGHTING);
+    if (lightingOn) {
+        glDisable(GL_LIGHTING);
+    }
 
-    // Lop trung tam de tao chieu sau nhe
-    glColor3f(cMid[0], cMid[1], cMid[2]);
-    glPushMatrix();
-    glScalef(0.16f, 0.30f, 0.34f);
-    mHub.draw();
-    glPopMatrix();
+    const float zRibbon = 0.00f;
+    const float zCenter = 0.02f;
+    const float logoThickness = 0.16f;
+    const float depth = 0.53f;
+    const float dxTop = 0.0f, dyTop = 1.0f;
+    const float dxBR = 0.8660254f, dyBR = -0.5f;
+    const float dxBL = -0.8660254f, dyBL = -0.5f;
+
+    glColor3f(indigo[0], indigo[1], indigo[2]);
+    drawExtrudedRibbonQuad(hx[5], hy[5], hx[0], hy[0], dxTop, dyTop, depth, zRibbon, logoThickness);
+    glColor3f(blue[0], blue[1], blue[2]);
+    drawExtrudedRibbonQuad(hx[0], hy[0], hx[1], hy[1], dxTop, dyTop, depth, zRibbon, logoThickness);
+
+    glColor3f(indigo[0], indigo[1], indigo[2]);
+    drawExtrudedRibbonQuad(hx[1], hy[1], hx[2], hy[2], dxBR, dyBR, depth, zRibbon, logoThickness);
+    glColor3f(blue[0], blue[1], blue[2]);
+    drawExtrudedRibbonQuad(hx[2], hy[2], hx[3], hy[3], dxBR, dyBR, depth, zRibbon, logoThickness);
+
+    glColor3f(blue[0], blue[1], blue[2]);
+    drawExtrudedRibbonQuad(hx[4], hy[4], hx[5], hy[5], dxBL, dyBL, depth, zRibbon, logoThickness);
+    glColor3f(indigo[0], indigo[1], indigo[2]);
+    drawExtrudedRibbonQuad(hx[3], hy[3], hx[4], hy[4], dxBL, dyBL, depth, zRibbon, logoThickness);
+
+    glColor3f(1.0f, 1.0f, 1.0f);
+    drawExtrudedHex(hx, hy, zCenter, logoThickness);
+
+    if (lightingOn) {
+        glEnable(GL_LIGHTING);
+    }
 }
 
 void display() {
@@ -325,82 +482,109 @@ void display() {
     gluLookAt(eyeX, cam_height, eyeZ, 0.0f, -0.8f, 0.0f, 0.0f, 1.0f, 0.0f);
 
     glShadeModel(smooth_shading ? GL_SMOOTH : GL_FLAT);
+    if (smooth_shading) {
+        GLfloat amb[] = { 0.27f, 0.27f, 0.27f, 1.0f };
+        GLfloat diff[] = { 1.00f, 1.00f, 1.00f, 1.0f };
+        GLfloat spec[] = { 0.98f, 0.98f, 0.98f, 1.0f };
+        GLfloat matSpec[] = { 0.65f, 0.65f, 0.65f, 1.0f };
+        glLightfv(GL_LIGHT0, GL_AMBIENT, amb);
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, diff);
+        glLightfv(GL_LIGHT0, GL_SPECULAR, spec);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 96.0f);
+    } else {
+        GLfloat amb[] = { 0.16f, 0.16f, 0.16f, 1.0f };
+        GLfloat diff[] = { 0.86f, 0.86f, 0.86f, 1.0f };
+        GLfloat spec[] = { 0.08f, 0.08f, 0.08f, 1.0f };
+        GLfloat matSpec[] = { 0.04f, 0.04f, 0.04f, 1.0f };
+        glLightfv(GL_LIGHT0, GL_AMBIENT, amb);
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, diff);
+        glLightfv(GL_LIGHT0, GL_SPECULAR, spec);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 8.0f);
+    }
     drawFloor();
 
     glPushMatrix();
     glRotatef(base_rot, 0.0f, 1.0f, 0.0f);
 
-    // (1) De: 2 hinh tru gan cung
-    glColor3f(0.93f, 0.10f, 0.10f);
+    setDeviceColor(0.94f, 0.12f, 0.12f);
     glPushMatrix();
     glTranslatef(0.0f, -3.95f, 0.0f);
     glScalef(1.9f, 0.55f, 1.9f);
-    mHub.draw();
+    mHub.draw(smooth_shading);
     glPopMatrix();
 
-    glColor3f(0.86f, 0.10f, 0.10f);
+    setDeviceColor(0.90f, 0.10f, 0.10f);
     glPushMatrix();
-    glTranslatef(0.0f, -2.15f, 0.0f);
-    glScalef(0.19f, 3.70f, 0.19f);
-    mCyl.draw();
+    glTranslatef(0.0f, -3.45f, 0.0f);
+    glScalef(0.10f, 0.70f, 0.10f);
+    mCyl.draw(smooth_shading);
     glPopMatrix();
 
     glTranslatef(0.0f, -0.20f, 0.0f);
 
-    // Vong ngoai (do)
     glPushMatrix();
     glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
-    glColor3f(0.92f, 0.12f, 0.12f);
-    mRing.draw();
+    setDeviceColor(1.00f, 0.28f, 0.28f);
+    mRing.draw(smooth_shading);
     glPopMatrix();
 
-    // Thanh ngang cua vong ngoai
-    glColor3f(0.87f, 0.20f, 0.20f);
-    glPushMatrix();
-    glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
-    glScalef(0.09f, 7.2f, 0.09f);
-    mCyl.draw();
-    glPopMatrix();
+    setDeviceColor(0.82f, 0.10f, 0.10f);
+    for (int s = -1; s <= 1; s += 2) {
+        glPushMatrix();
+        glTranslatef(3.08f * (float)s, 0.0f, 0.0f);
+        glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
+        glScalef(0.10f, 1.30f, 0.10f);
+        mCyl.draw(smooth_shading);
+        glPopMatrix();
+    }
 
-    // Vong giua (xanh duong)
     glPushMatrix();
     glRotatef(g1_rot, 1.0f, 0.0f, 0.0f);
 
     glPushMatrix();
     glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
     glScalef(0.72f, 0.72f, 0.72f);
-    glColor3f(0.16f, 0.22f, 0.90f);
-    mRing.draw();
+    setDeviceColor(0.34f, 0.45f, 0.98f);
+    mRing.draw(smooth_shading);
     glPopMatrix();
 
-    // Thanh ngang cua vong trong
-    glColor3f(0.12f, 0.68f, 0.26f);
-    glPushMatrix();
-    glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
-    glScalef(0.08f, 5.0f, 0.08f);
-    mCyl.draw();
-    glPopMatrix();
+    setDeviceColor(0.16f, 0.20f, 0.74f);
+    for (int s = -1; s <= 1; s += 2) {
+        glPushMatrix();
+        glTranslatef(0.0f, 2.24f * (float)s, 0.0f);
+        glScalef(0.09f, 1.00f, 0.09f);
+        mCyl.draw(smooth_shading);
+        glPopMatrix();
+    }
 
-    // Vong trong cung (xanh la)
     glPushMatrix();
-    glRotatef(g2_rot, 1.0f, 0.0f, 0.0f);
+    glRotatef(g2_rot, 0.0f, 1.0f, 0.0f);
 
     glPushMatrix();
     glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
     glScalef(0.51f, 0.51f, 0.51f);
-    glColor3f(0.08f, 0.80f, 0.22f);
-    mRing.draw();
+    setDeviceColor(0.28f, 0.96f, 0.40f);
+    mRing.draw(smooth_shading);
     glPopMatrix();
 
-    // Logo BK quay trong tam
+    setDeviceColor(0.08f, 0.68f, 0.22f);
     glPushMatrix();
-    glRotatef(rotor_rot, 0.0f, 1.0f, 0.0f);
+    glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
+    glScalef(0.08f, 4.30f, 0.08f);
+    mCyl.draw(smooth_shading);
+    glPopMatrix();
+
+    glPushMatrix();
+    glRotatef(rotor_rot, 1.0f, 0.0f, 0.0f);
+    glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
     drawCenterLogo();
     glPopMatrix();
 
-    glPopMatrix(); // end gimbal 2
-    glPopMatrix(); // end gimbal 1
-    glPopMatrix(); // end base
+    glPopMatrix(); 
+    glPopMatrix(); 
+    glPopMatrix(); 
 
     glutSwapBuffers();
 }
@@ -424,11 +608,9 @@ void keyboard(unsigned char key, int, int) {
         case '4': g1_rot -= 5.0f; break;
         case '5':
             g2_rot += 5.0f;
-            rotor_rot += 5.0f; // de thay ro cum vong xanh + logo quay
             break;
         case '6':
             g2_rot -= 5.0f;
-            rotor_rot -= 5.0f;
             break;
         case '7': rotor_rot += 15.0f; break;
         case '8': rotor_rot -= 15.0f; break;
@@ -441,11 +623,7 @@ void keyboard(unsigned char key, int, int) {
             break;
         case 's':
         case 'S':
-            smooth_shading = true;
-            break;
-        case 'f':
-        case 'F':
-            smooth_shading = false;
+            smooth_shading = !smooth_shading;
             break;
         case '+':
             cam_dis += 1.0f;
@@ -474,9 +652,18 @@ void special(int key, int, int) {
 }
 
 int main(int argc, char** argv) {
-    cout << "1,2: xoay de | 3,4: xoay vong xanh duong | 5,6: xoay vong xanh la + cum logo | 7,8: xoay rieng logo" << endl;
-    cout << "R: reset | S/F: smooth-flat shading | +/-: camera distance" << endl;
-    cout << "Mui ten: dieu chinh camera angle/height" << endl;
+    cout << "1, 2: Rotate the base" << endl;
+    cout << "3, 4: Rotate the gimbal 1" << endl;
+    cout << "5, 6: Rotate the gimbal 2" << endl;
+    cout << "7, 8: Rotate the rotor" << endl;
+    cout << "R, r: Reset the Gyroscope" << endl;
+    cout << "S, s: Toggle smooth shading on/off" << endl;
+    cout << "+   : to increase camera distance." << endl;
+    cout << "-   : to decrease camera distance." << endl;
+    cout << "up arrow  : to increase camera height." << endl;
+    cout << "down arrow: to decrease camera height." << endl;
+    cout << "<-        : to rotate camera clockwise." << endl;
+    cout << "->        : to rotate camera counterclockwise." << endl;
 
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
@@ -493,19 +680,25 @@ int main(int argc, char** argv) {
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
 
     GLfloat lightPos[]  = { 12.0f, 18.0f, 16.0f, 1.0f };
-    GLfloat lightDiff[] = { 0.90f, 0.90f, 0.90f, 1.0f };
-    GLfloat lightAmb[]  = { 0.24f, 0.24f, 0.24f, 1.0f };
+    GLfloat lightDiff[] = { 0.98f, 0.98f, 0.98f, 1.0f };
+    GLfloat lightAmb[]  = { 0.26f, 0.26f, 0.26f, 1.0f };
+    GLfloat lightSpec[] = { 0.95f, 0.95f, 0.95f, 1.0f };
+    GLfloat matSpec[]   = { 0.35f, 0.35f, 0.35f, 1.0f };
     glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
     glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiff);
     glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmb);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, lightSpec);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 64.0f);
 
     mCyl  = createCappedCylinder(1.0f, 1.0f, 40);
-    mRing = createTorus(0.18f, 3.1f, 26, 80);
+    mRing = createTorus(0.18f, 3.1f, 16, 48);
     mBox  = createBox(0.55f, 1.15f, 0.30f);
     mHub  = createCappedCylinder(1.0f, 0.80f, 40);
     mHex  = createCappedCylinder(1.0f, 1.0f, 6);
+    mPara = createParallelogramPrism(1.0f, 1.0f, 1.0f, 0.26f);
 
-    glClearColor(0.93f, 0.93f, 0.93f, 1.0f);
+    glClearColor(0.96f, 0.96f, 0.96f, 1.0f);
     glutReshapeFunc(reshape);
     glutDisplayFunc(display);
     glutKeyboardFunc(keyboard);

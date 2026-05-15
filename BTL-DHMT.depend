@@ -1,5 +1,5 @@
 # depslib dependency file v1.0
-1778486632 source:d:\study\hk252\dhmt\btl-dhmt\main.cpp
+1778830118 source:d:\study\hk252\dhmt\btl-dhmt\main.cpp
 	<windows.h>
 	<GL/glut.h>
 	<math.h>
