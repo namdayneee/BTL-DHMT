@@ -9,7 +9,7 @@
 using namespace std;
 
 // =============================================================================
-// THONG TIN SINH VIEN 
+// THONG TIN SINH VIEN
 // =============================================================================
 #define STUDENT_NAME "Nguyen Dinh Nam"
 #define STUDENT_ID   "2212136"
@@ -229,12 +229,12 @@ Mesh createBox(float w, float h, float d) {
     }
 
     int facesIdx[6][4] = {
-        {4, 5, 6, 7}, 
-        {1, 0, 3, 2}, 
-        {0, 4, 7, 3}, 
-        {5, 1, 2, 6}, 
-        {3, 7, 6, 2}, 
-        {0, 1, 5, 4}  
+        {4, 5, 6, 7},
+        {1, 0, 3, 2},
+        {0, 4, 7, 3},
+        {5, 1, 2, 6},
+        {3, 7, 6, 2},
+        {0, 1, 5, 4}
     };
 
     for (int i = 0; i < 6; ++i) {
@@ -266,12 +266,12 @@ Mesh createParallelogramPrism(float w, float h, float d, float skew) {
     }
 
     int facesIdx[6][4] = {
-        {4, 5, 6, 7}, 
-        {1, 0, 3, 2}, 
-        {0, 4, 7, 3}, 
-        {5, 1, 2, 6}, 
-        {3, 7, 6, 2}, 
-        {0, 1, 5, 4}  
+        {4, 5, 6, 7},
+        {1, 0, 3, 2},
+        {0, 4, 7, 3},
+        {5, 1, 2, 6},
+        {3, 7, 6, 2},
+        {0, 1, 5, 4}
     };
 
     for (int i = 0; i < 6; ++i) {
@@ -582,9 +582,9 @@ void display() {
     drawCenterLogo();
     glPopMatrix();
 
-    glPopMatrix(); 
-    glPopMatrix(); 
-    glPopMatrix(); 
+    glPopMatrix();
+    glPopMatrix();
+    glPopMatrix();
 
     glutSwapBuffers();
 }
@@ -669,7 +669,7 @@ int main(int argc, char** argv) {
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(1000, 620);
 
-    string title = string("Assignment-") + STUDENT_NAME + " - " + STUDENT_ID;
+    string title = string("Assignment - ") + STUDENT_NAME + " - " + STUDENT_ID;
     glutCreateWindow(title.c_str());
 
     glEnable(GL_DEPTH_TEST);
