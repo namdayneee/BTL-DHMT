@@ -505,7 +505,7 @@ void display() {
     mFrTor.draw(smooth_shading);
     glPopMatrix();
 
-    // Frame pins (red) ±X
+    // Frame pins (red) ï¿½X
     glPushMatrix();
     setDeviceColor(1.0f, 0.0f, 0.0f);
     glTranslatef(G1_R, 0.0f, 0.0f);
@@ -530,7 +530,7 @@ void display() {
     mG1Tor.draw(smooth_shading);
     glPopMatrix();
 
-    // Gimbal1 pins (blue) ±Y
+    // Gimbal1 pins (blue) ï¿½Y
     glPushMatrix();
     setDeviceColor(0.0f, 0.0f, 1.0f);
     glTranslatef(0.0f, G2_R, 0.0f);
@@ -587,14 +587,30 @@ void reshape(int w, int h) {
 void keyboard(unsigned char key, int, int) {
     const float S = 5.0f;
     switch (key) {
-        case '1': base_rot += S; break;
-        case '2': base_rot -= S; break;
-        case '3': g1_rot += S; break;
-        case '4': g1_rot -= S; break;
-        case '5': g2_rot += S; break;
-        case '6': g2_rot -= S; break;
-        case '7': rotor_rot += S; break;
-        case '8': rotor_rot -= S; break;
+        case '1': 
+            base_rot += S; 
+            break;
+        case '2': 
+            base_rot -= S; 
+            break;
+        case '3': 
+            g1_rot += S; 
+            break;
+        case '4': 
+            g1_rot -= S; 
+            break;
+        case '5': 
+            g2_rot += S; 
+            break;
+        case '6': 
+            g2_rot -= S; 
+            break;
+        case '7': 
+            rotor_rot += S; 
+            break;
+        case '8':  
+            rotor_rot -= S; 
+            break;
 
         case 'r':
         case 'R':
