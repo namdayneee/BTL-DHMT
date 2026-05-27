@@ -244,8 +244,7 @@ public:
 // =============================================================================
 float base_rot = 0.0f, g1_rot = 0.0f, g2_rot = 0.0f, rotor_rot = 0.0f;
 float cam_angle = 25.0f, cam_height = 28.0f, cam_dis = 60.0f;
-bool smooth_shading = false; // Mac dinh la to mau phang (Flat shading)
-
+bool smooth_shading = false;
 struct Config {
     float bSmallR, bSmallH;
     float bBigR, bBigH;
@@ -257,166 +256,196 @@ struct Config {
     float axR;
 
     Config() {
-        bSmallR = 0.65f; bSmallH = 3.2f;
-        bBigR = 4.8f;    bBigH = 1.2f;
-        g2R = 6.4f;      g2r = 0.55f;
-        g1R = 8.6f;      g1r = 0.55f;
-        frR = 12.0f;     frr = 0.55f;
-        fpR = 0.6f;
-        g1pR = 0.55f;
-        axR = 0.4f;
+        bSmallR = 0.7f;  bSmallH = 3.5f;
+        bBigR = 5.2f;    bBigH = 1.4f;
+        g2R = 7.0f;      g2r = 0.6f;
+        g1R = 9.5f;      g1r = 0.6f;
+        frR = 13.5f;     frr = 0.6f;
+        fpR = 0.65f;
+        g1pR = 0.6f;
+        axR = 0.45f;
     }
 } cfg;
 
-Mesh mBaseS, mBaseB, mFrTor, mFrPin, mG1Tor, mG1Pin, mG2Tor, mAxis;
+Mesh meshStem, meshPedestal, meshOutRing, meshOutAxle, meshMidRing, meshMidAxle, meshInnerRing, meshSpindle;
 SceneNode* rootNode = NULL;
 
 // =============================================================================
 // VE LA BAN & LOGO TAI TRONG TAM
 // =============================================================================
-void drawLocalPrism(float hexR, float thickness, float rC, float gC, float bC, int startIdx, int endIdx) {
+static void hexPrismSector(float R, float yThick,
+                            float rC, float gC, float bC,
+                            float angA, float angB, int steps) {
     setDeviceColor(rC, gC, bC);
-    float yTop = thickness * 0.5f, yBot = -thickness * 0.5f;
+    float yT = yThick * 0.5f, yB = -yThick * 0.5f;
 
-    glBegin(GL_TRIANGLE_FAN);
+    // Mat tren
     glNormal3f(0.0f, 1.0f, 0.0f);
-    glVertex3f(0.0f, yTop, 0.0f);
-    for(int i = startIdx; i <= endIdx; ++i) {
-        float a = i * PI / 3.0f;
-        glVertex3f(hexR * cosf(a), yTop, hexR * sinf(a));
-    }
-    glEnd();
-
     glBegin(GL_TRIANGLE_FAN);
-    glNormal3f(0.0f, -1.0f, 0.0f);
-    glVertex3f(0.0f, yBot, 0.0f);
-    for(int i = endIdx; i >= startIdx; --i) {
-        float a = i * PI / 3.0f;
-        glVertex3f(hexR * cosf(a), yBot, hexR * sinf(a));
+    glVertex3f(0.0f, yT, 0.0f);
+    for (int i = 0; i <= steps; i++) {
+        float a = angA + (angB - angA) * i / steps;
+        glVertex3f(R * cosf(a), yT, R * sinf(a));
     }
     glEnd();
 
-    glBegin(GL_QUADS);
-    for(int i = startIdx; i < endIdx; ++i) {
-        float a1 = i * PI / 3.0f, a2 = (i + 1) * PI / 3.0f;
-        float x1 = hexR * cosf(a1), z1 = hexR * sinf(a1);
-        float x2 = hexR * cosf(a2), z2 = hexR * sinf(a2);
-        float nx = z2 - z1, nz = -(x2 - x1);
-        float len = sqrtf(nx*nx + nz*nz);
-        glNormal3f(nx/len, 0.0f, nz/len);
+    // Mat duoi
+    glNormal3f(0.0f, -1.0f, 0.0f);
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex3f(0.0f, yB, 0.0f);
+    for (int i = steps; i >= 0; i--) {
+        float a = angA + (angB - angA) * i / steps;
+        glVertex3f(R * cosf(a), yB, R * sinf(a));
+    }
+    glEnd();
 
-        glVertex3f(x1, yBot, z1);
-        glVertex3f(x1, yTop, z1);
-        glVertex3f(x2, yTop, z2);
-        glVertex3f(x2, yBot, z2);
+    // Mat ben
+    glBegin(GL_QUADS);
+    for (int i = 0; i < steps; i++) {
+        float a0 = angA + (angB - angA) * i / steps;
+        float a1 = angA + (angB - angA) * (i + 1) / steps;
+        float x0 = R * cosf(a0), z0 = R * sinf(a0);
+        float x1 = R * cosf(a1), z1 = R * sinf(a1);
+        float enx = z1 - z0, enz = -(x1 - x0);
+        float elen = sqrtf(enx * enx + enz * enz);
+        if (elen > 1e-6f) { enx /= elen; enz /= elen; }
+        glNormal3f(enx, 0.0f, enz);
+        glVertex3f(x0, yB, z0); glVertex3f(x0, yT, z0);
+        glVertex3f(x1, yT, z1); glVertex3f(x1, yB, z1);
     }
     glEnd();
 }
 
 void drawDynamicLogo() {
-    float logoR = (cfg.g2R - cfg.g2r) * 0.85f;
-    float hexR = logoR * 0.42f;
-    float thic = 0.59f;
+    float logoR = (cfg.g2R - cfg.g2r) * 0.72f;
+    float hexR  = logoR * 0.48f;
+    const float PLANK = 0.50f;
 
-    // Center White 
+    const float dR = 0.012f, dG = 0.169f, dB = 0.569f;
+    const float lR = 0.078f, lG = 0.533f, lB = 0.859f;
+
     glPushMatrix();
     glRotatef(30.0f, 0.0f, 1.0f, 0.0f);
-    drawLocalPrism(hexR, 0.6f, 1.0f, 1.0f, 1.0f, 0, 6);
+    hexPrismSector(hexR, 0.65f, 1.0f, 1.0f, 1.0f, 0.0f, 2.0f * PI, 6);
     glPopMatrix();
 
-    for(int k = 0; k < 3; ++k) {
+    const float TWO_THIRD_PI = PI * 2.0f / 3.0f;
+    for (int k = 0; k < 3; k++) {
+        float lobeRad = PI * 0.5f + k * TWO_THIRD_PI;
         glPushMatrix();
-        glRotatef(k * 120.0f + 90.0f, 0.0f, 1.0f, 0.0f);
+        glRotatef(lobeRad * (180.0f / PI), 0.0f, 1.0f, 0.0f);
         glTranslatef(hexR, 0.0f, 0.0f);
-
-        // Dark Blue Lobe
-        drawLocalPrism(hexR, thic, 3.f/255.f, 43.f/255.f, 145.f/255.f, 0, 3);
-        // Light Blue Lobe
-        drawLocalPrism(hexR, thic, 20.f/255.f, 136.f/255.f, 219.f/255.f, 3, 6);
-
+        hexPrismSector(hexR, PLANK, dR, dG, dB, 0.0f,  PI,          3);
+        hexPrismSector(hexR, PLANK, lR, lG, lB,  PI,  2.0f * PI,    3);
         glPopMatrix();
     }
 }
 
-void drawCompassRing(float inR, float outR, float y) {
+static void paintFloorTile(float px, float pz, float size) {
+    const float R = size * 0.48f;
+
+    const float longReach = R * 1.12f;
+    const float shortReach = R * 0.46f;
+    const float hwLong  = longReach  * 0.5f * 0.36f;
+    const float hwShort = shortReach * 0.24f;
+
+    const float GRY = 0.68f;
+    const float YR  = 0.005f;
+    const float YO  = 0.030f;
+    const float YS  = 0.050f;
+
     glNormal3f(0.0f, 1.0f, 0.0f);
-    glBegin(GL_QUAD_STRIP);
-    for (int i = 0; i <= 48; i++) {
-        float a = i * (PI * 2.0f / 48.0f);
-        glVertex3f(inR * cosf(a), y, inR * sinf(a));
-        glVertex3f(outR * cosf(a), y, outR * sinf(a));
+
+    glColor3f(GRY, GRY, GRY);
+    glBegin(GL_TRIANGLE_STRIP);
+    for (int k = 0; k <= 48; k++) {
+        float a = k * (2.0f * PI / 48.0f);
+        float ca = cosf(a), sa = sinf(a);
+        glVertex3f(px + R * 1.08f * ca, YR, pz + R * 1.08f * sa);
+        glVertex3f(px + R * 0.99f * ca, YR, pz + R * 0.99f * sa);
     }
     glEnd();
-}
 
-void drawNewCompassRose(float R) {
-    float outerD = R * 1.0368f;
-    float inTip = R * 0.54f;
+    glColor3f(GRY, GRY, GRY);
+    glBegin(GL_TRIANGLE_STRIP);
+    for (int k = 0; k <= 48; k++) {
+        float a = k * (2.0f * PI / 48.0f);
+        float ca = cosf(a), sa = sinf(a);
+        glVertex3f(px + R * 0.86f * ca, 0.0f, pz + R * 0.86f * sa);
+        glVertex3f(px + R * 0.77f * ca, 0.0f, pz + R * 0.77f * sa);
+    }
+    glEnd();
 
-    float outerHW = (outerD * 0.5f) * tanf(PI / 8.0f);
-    float inW = inTip * tanf(PI / 16.0f);
+    for (int d = 0; d < 8; d++) {
+        float ang  = d * (PI * 0.25f);
+        float perp = ang + PI * 0.5f;
 
-    glColor3f(0.68f, 0.68f, 0.68f);
-    drawCompassRing(R * 0.99f, R * 1.08f, 0.005f);
-    drawCompassRing(R * 0.77f, R * 0.86f, 0.0f);
+        float pTX = px + longReach * cosf(ang),          pTZ = pz + longReach * sinf(ang);
+        float pMX = px + longReach * 0.5f * cosf(ang),   pMZ = pz + longReach * 0.5f * sinf(ang);
+        float pLX = pMX + hwLong * cosf(perp),           pLZ = pMZ + hwLong * sinf(perp);
+        float pRX = pMX - hwLong * cosf(perp),           pRZ = pMZ - hwLong * sinf(perp);
 
-    glNormal3f(0.0f, 1.0f, 0.0f);
-    for (int i = 0; i < 8; ++i) {
-        glPushMatrix();
-        glRotatef(i * 45.0f, 0.0f, 1.0f, 0.0f);
+        if (d % 2 == 0) glColor3f(0.871f, 0.753f, 0.549f);
+        else             glColor3f(0.388f, 0.275f, 0.165f);
 
-        if (i % 2 == 0) glColor3f(222.f/255.f, 192.f/255.f, 140.f/255.f);
-        else            glColor3f(99.f/255.f, 70.f/255.f, 42.f/255.f);
+        glBegin(GL_QUADS);
+        glVertex3f(px, YO, pz); glVertex3f(pLX, YO, pLZ);
+        glVertex3f(pTX, YO, pTZ); glVertex3f(pRX, YO, pRZ);
+        glEnd();
+    }
 
+    for (int d = 0; d < 8; d++) {
+        float ang  = d * (PI * 0.25f) + PI / 8.0f;
+        float perp = ang + PI * 0.5f;
+
+        float pTX = px + shortReach * cosf(ang),          pTZ = pz + shortReach * sinf(ang);
+        float pMX = px + shortReach * 0.5f * cosf(ang),   pMZ = pz + shortReach * 0.5f * sinf(ang);
+        float pLX = pMX + hwShort * cosf(perp),           pLZ = pMZ + hwShort * sinf(perp);
+        float pRX = pMX - hwShort * cosf(perp),           pRZ = pMZ - hwShort * sinf(perp);
+
+        glColor3f(1.0f, 1.0f, 1.0f);
         glBegin(GL_TRIANGLES);
-        glVertex3f(0.0f, 0.03f, 0.0f);
-        glVertex3f(outerD * 0.5f, 0.03f, outerHW);
-        glVertex3f(outerD, 0.03f, 0.0f);
-
-        glVertex3f(0.0f, 0.03f, 0.0f);
-        glVertex3f(outerD, 0.03f, 0.0f);
-        glVertex3f(outerD * 0.5f, 0.03f, -outerHW);
+        glVertex3f(pTX, YS, pTZ); glVertex3f(pLX, YS, pLZ); glVertex3f(px, YS, pz);
         glEnd();
 
-        // Inner star
-        glColor3f(1.0f, 1.0f, 1.0f); // White half
+        glColor3f(0.05f, 0.05f, 0.05f);
         glBegin(GL_TRIANGLES);
-        glVertex3f(0.0f, 0.05f, 0.0f);
-        glVertex3f(inTip * 0.5f, 0.05f, inW);
-        glVertex3f(inTip, 0.05f, 0.0f);
+        glVertex3f(pTX, YS, pTZ); glVertex3f(px, YS, pz); glVertex3f(pRX, YS, pRZ);
         glEnd();
-
-        glColor3f(0.05f, 0.05f, 0.05f); // Black half
-        glBegin(GL_TRIANGLES);
-        glVertex3f(0.0f, 0.05f, 0.0f);
-        glVertex3f(inTip, 0.05f, 0.0f);
-        glVertex3f(inTip * 0.5f, 0.05f, -inW);
-        glEnd();
-
-        glPopMatrix();
     }
 }
 
 void drawFloor() {
-    const int N = 20;
-    const float T = 4.0f;
-    const float H = N * T * 0.5f;
-    const float R = T * 0.48f;
+    const int   GRID = 24;
+    const float CELL = 3.5f;
+    const float HALF = GRID * CELL * 0.5f;
 
     glDisable(GL_LIGHTING);
     glDisable(GL_COLOR_MATERIAL);
+    glNormal3f(0.0f, 1.0f, 0.0f);
 
-    for (int r = 0; r < N; r++) {
-        for (int c = 0; c < N; c++) {
-            float cx = -H + c*T + T*0.5f;
-            float cz = -H + r*T + T*0.5f;
-
-            glPushMatrix();
-            glTranslatef(cx, 0.0f, cz);
-            drawNewCompassRose(R);
-            glPopMatrix();
+    for (int row = 0; row < GRID; row++) {
+        for (int col = 0; col < GRID; col++) {
+            float tileCx = -HALF + col * CELL + CELL * 0.5f;
+            float tileCz = -HALF + row * CELL + CELL * 0.5f;
+            paintFloorTile(tileCx, tileCz, CELL);
         }
     }
+
+    const float YG = 0.08f;
+    glColor3f(0.45f, 0.40f, 0.35f);
+    glLineWidth(1.2f);
+    glBegin(GL_LINES);
+    for (int i = 0; i <= GRID; i++) {
+        float pos = -HALF + i * CELL;
+        glVertex3f(pos, YG, -HALF);
+        glVertex3f(pos, YG,  HALF);
+        glVertex3f(-HALF, YG, pos);
+        glVertex3f( HALF, YG, pos);
+    }
+    glEnd();
+    glLineWidth(1.0f);
+
     glEnable(GL_LIGHTING);
 }
 
@@ -430,70 +459,70 @@ void initSceneGraph() {
     pivotBase->setDynamicRot(&base_rot, 0, 1, 0);
     rootNode->addChild(pivotBase);
 
-    SceneNode* nBaseB = new SceneNode(&mBaseB);
-    nBaseB->setColor(1.0f, 0.1f, 0.1f);
-    pivotBase->addChild(nBaseB);
+    SceneNode* nPedestal = new SceneNode(&meshPedestal);
+    nPedestal->setColor(1.0f, 0.1f, 0.1f);
+    pivotBase->addChild(nPedestal);
 
-    SceneNode* nBaseS = new SceneNode(&mBaseS);
-    nBaseS->setColor(1.0f, 0.1f, 0.1f);
-    nBaseS->setTransform(0, cfg.bBigH, 0);
-    pivotBase->addChild(nBaseS);
+    SceneNode* nStem = new SceneNode(&meshStem);
+    nStem->setColor(1.0f, 0.1f, 0.1f);
+    nStem->setTransform(0, cfg.bBigH, 0);
+    pivotBase->addChild(nStem);
 
     float devY = cfg.bSmallH + cfg.bBigH + cfg.frR;
     SceneNode* pivotFrame = new SceneNode();
     pivotFrame->setTransform(0, devY, 0);
     pivotBase->addChild(pivotFrame);
 
-    SceneNode* nFrTor = new SceneNode(&mFrTor);
-    nFrTor->setColor(1.0f, 0.1f, 0.1f);
-    nFrTor->setStaticRot(90.0f, 0, 0);
-    pivotFrame->addChild(nFrTor);
+    SceneNode* nOutRing = new SceneNode(&meshOutRing);
+    nOutRing->setColor(1.0f, 0.1f, 0.1f);
+    nOutRing->setStaticRot(90.0f, 0, 0);
+    pivotFrame->addChild(nOutRing);
 
-    SceneNode* nFrPin1 = new SceneNode(&mFrPin);
-    nFrPin1->setColor(1.0f, 0.1f, 0.1f);
-    nFrPin1->setTransform(cfg.g1R, 0, 0);
-    nFrPin1->setStaticRot(0, 0, -90.0f);
-    pivotFrame->addChild(nFrPin1);
+    SceneNode* nOutAxle1 = new SceneNode(&meshOutAxle);
+    nOutAxle1->setColor(1.0f, 0.1f, 0.1f);
+    nOutAxle1->setTransform(cfg.g1R, 0, 0);
+    nOutAxle1->setStaticRot(0, 0, -90.0f);
+    pivotFrame->addChild(nOutAxle1);
 
-    SceneNode* nFrPin2 = new SceneNode(&mFrPin);
-    nFrPin2->setColor(1.0f, 0.1f, 0.1f);
-    nFrPin2->setTransform(-cfg.g1R - (cfg.frR - cfg.g1R), 0, 0);
-    nFrPin2->setStaticRot(0, 0, -90.0f);
-    pivotFrame->addChild(nFrPin2);
+    SceneNode* nOutAxle2 = new SceneNode(&meshOutAxle);
+    nOutAxle2->setColor(1.0f, 0.1f, 0.1f);
+    nOutAxle2->setTransform(-cfg.g1R - (cfg.frR - cfg.g1R), 0, 0);
+    nOutAxle2->setStaticRot(0, 0, -90.0f);
+    pivotFrame->addChild(nOutAxle2);
 
     SceneNode* pivotG1 = new SceneNode();
     pivotG1->setDynamicRot(&g1_rot, 1, 0, 0);
     pivotFrame->addChild(pivotG1);
 
-    SceneNode* nG1Tor = new SceneNode(&mG1Tor);
-    nG1Tor->setColor(0.1f, 0.3f, 1.0f);
-    nG1Tor->setStaticRot(90.0f, 0, 0);
-    pivotG1->addChild(nG1Tor);
+    SceneNode* nMidRing = new SceneNode(&meshMidRing);
+    nMidRing->setColor(0.1f, 0.3f, 1.0f);
+    nMidRing->setStaticRot(90.0f, 0, 0);
+    pivotG1->addChild(nMidRing);
 
-    SceneNode* nG1Pin1 = new SceneNode(&mG1Pin);
-    nG1Pin1->setColor(0.1f, 0.3f, 1.0f);
-    nG1Pin1->setTransform(0, cfg.g2R, 0);
-    pivotG1->addChild(nG1Pin1);
+    SceneNode* nMidAxle1 = new SceneNode(&meshMidAxle);
+    nMidAxle1->setColor(0.1f, 0.3f, 1.0f);
+    nMidAxle1->setTransform(0, cfg.g2R, 0);
+    pivotG1->addChild(nMidAxle1);
 
-    SceneNode* nG1Pin2 = new SceneNode(&mG1Pin);
-    nG1Pin2->setColor(0.1f, 0.3f, 1.0f);
-    nG1Pin2->setTransform(0, -cfg.g2R - (cfg.g1R - cfg.g2R), 0);
-    pivotG1->addChild(nG1Pin2);
+    SceneNode* nMidAxle2 = new SceneNode(&meshMidAxle);
+    nMidAxle2->setColor(0.1f, 0.3f, 1.0f);
+    nMidAxle2->setTransform(0, -cfg.g2R - (cfg.g1R - cfg.g2R), 0);
+    pivotG1->addChild(nMidAxle2);
 
     SceneNode* pivotG2 = new SceneNode();
     pivotG2->setDynamicRot(&g2_rot, 0, 1, 0);
     pivotG1->addChild(pivotG2);
 
-    SceneNode* nG2Tor = new SceneNode(&mG2Tor);
-    nG2Tor->setColor(0.1f, 1.0f, 0.2f);
-    nG2Tor->setStaticRot(90.0f, 0, 0);
-    pivotG2->addChild(nG2Tor);
+    SceneNode* nInnerRing = new SceneNode(&meshInnerRing);
+    nInnerRing->setColor(0.1f, 1.0f, 0.2f);
+    nInnerRing->setStaticRot(90.0f, 0, 0);
+    pivotG2->addChild(nInnerRing);
 
-    SceneNode* nAxis = new SceneNode(&mAxis);
-    nAxis->setColor(0.1f, 1.0f, 0.2f);
-    nAxis->setTransform(-cfg.g2R, 0, 0);
-    nAxis->setStaticRot(0, 0, -90.0f);
-    pivotG2->addChild(nAxis);
+    SceneNode* nSpindle = new SceneNode(&meshSpindle);
+    nSpindle->setColor(0.1f, 1.0f, 0.2f);
+    nSpindle->setTransform(-cfg.g2R, 0, 0);
+    nSpindle->setStaticRot(0, 0, -90.0f);
+    pivotG2->addChild(nSpindle);
 
     SceneNode* pivotRotor = new SceneNode();
     pivotRotor->setDynamicRot(&rotor_rot, 1, 0, 0);
@@ -518,13 +547,13 @@ void display() {
 
     glEnable(GL_LIGHTING); glEnable(GL_LIGHT0); glEnable(GL_LIGHT1); glEnable(GL_LIGHT2);
 
-    float p0[4] = {20.0f, 45.0f, 20.0f, 1.0f}, a0[4] = {0.35f, 0.35f, 0.35f, 1.0f}, d0[4] = {1.0f, 0.98f, 0.95f, 1.0f}, s0[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    float p0[4] = {30.0f, 50.0f, 10.0f, 1.0f}, a0[4] = {0.28f, 0.28f, 0.28f, 1.0f}, d0[4] = {1.0f, 0.96f, 0.90f, 1.0f}, s0[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     glLightfv(GL_LIGHT0, GL_POSITION, p0); glLightfv(GL_LIGHT0, GL_AMBIENT, a0); glLightfv(GL_LIGHT0, GL_DIFFUSE, d0); glLightfv(GL_LIGHT0, GL_SPECULAR, s0);
 
-    float p1[4] = {-25.0f, 30.0f, -15.0f, 1.0f}, d1[4] = {0.6f, 0.65f, 0.8f, 1.0f}, s1[4] = {0.3f, 0.3f, 0.3f, 1.0f};
+    float p1[4] = {-30.0f, 20.0f, -20.0f, 1.0f}, d1[4] = {0.5f, 0.55f, 0.7f, 1.0f}, s1[4] = {0.2f, 0.2f, 0.2f, 1.0f};
     glLightfv(GL_LIGHT1, GL_POSITION, p1); glLightfv(GL_LIGHT1, GL_DIFFUSE, d1); glLightfv(GL_LIGHT1, GL_SPECULAR, s1);
 
-    float p2[4] = {5.0f, -25.0f, 10.0f, 1.0f}, d2[4] = {0.25f, 0.25f, 0.28f, 1.0f}, s2[4] = {0.1f, 0.1f, 0.1f, 1.0f};
+    float p2[4] = {0.0f, -30.0f, 15.0f, 1.0f}, d2[4] = {0.18f, 0.18f, 0.20f, 1.0f}, s2[4] = {0.05f, 0.05f, 0.05f, 1.0f};
     glLightfv(GL_LIGHT2, GL_POSITION, p2); glLightfv(GL_LIGHT2, GL_DIFFUSE, d2); glLightfv(GL_LIGHT2, GL_SPECULAR, s2);
 
     drawFloor();
@@ -549,7 +578,7 @@ void reshape(int w, int h) {
     glViewport(0, 0, w, h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(45.0, (float)w / h, 0.5, 600.0);
+    gluPerspective(50.0, (float)w / h, 1.0, 500.0);
     glMatrixMode(GL_MODELVIEW);
 }
 
@@ -592,11 +621,11 @@ void keyboard(unsigned char key, int, int) {
             break;
 
         case '+':
-            cam_dis += 2.0f; // Tang khoang cach (Zoom out)
+            cam_dis += 2.0f;
             break;
 
         case '-':
-            cam_dis -= 2.0f; // Giam khoang cach (Zoom in)
+            cam_dis -= 2.0f;
             if (cam_dis < 8.0f) cam_dis = 8.0f;
             break;
 
@@ -614,6 +643,7 @@ void special(int key, int, int) {
         case GLUT_KEY_LEFT:  cam_angle -= 5.0f; break;
         case GLUT_KEY_RIGHT: cam_angle += 5.0f; break;
     }
+
     glutPostRedisplay();
 }
 
@@ -646,19 +676,19 @@ int main(int argc, char** argv) {
     glDisable(GL_COLOR_MATERIAL);
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
-    float gAmb[4] = {0.2f, 0.2f, 0.2f, 1.0f};
+    float gAmb[4] = {0.12f, 0.12f, 0.12f, 1.0f};
     glLightModelfv(GL_LIGHT_MODEL_AMBIENT, gAmb);
     glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE);
 
     // Generate Meshes
-    mBaseS = createCappedCylinder(cfg.bSmallR, cfg.bSmallH, 64);
-    mBaseB = createCappedCylinder(cfg.bBigR, cfg.bBigH, 64);
-    mFrTor = createTorus(cfg.frr, cfg.frR, 36, 120);
-    mFrPin = createCappedCylinder(cfg.fpR, cfg.frR - cfg.g1R, 32);
-    mG1Tor = createTorus(cfg.g1r, cfg.g1R, 36, 120);
-    mG1Pin = createCappedCylinder(cfg.g1pR, cfg.g1R - cfg.g2R, 32);
-    mG2Tor = createTorus(cfg.g2r, cfg.g2R, 36, 120);
-    mAxis  = createCappedCylinder(cfg.axR, cfg.g2R * 2.0f, 32);
+    meshStem      = createCappedCylinder(cfg.bSmallR, cfg.bSmallH, 64);
+    meshPedestal  = createCappedCylinder(cfg.bBigR, cfg.bBigH, 64);
+    meshOutRing   = createTorus(cfg.frr, cfg.frR, 36, 120);
+    meshOutAxle   = createCappedCylinder(cfg.fpR, cfg.frR - cfg.g1R, 32);
+    meshMidRing   = createTorus(cfg.g1r, cfg.g1R, 36, 120);
+    meshMidAxle   = createCappedCylinder(cfg.g1pR, cfg.g1R - cfg.g2R, 32);
+    meshInnerRing = createTorus(cfg.g2r, cfg.g2R, 36, 120);
+    meshSpindle   = createCappedCylinder(cfg.axR, cfg.g2R * 2.0f, 32);
 
     // Initialize Tree Structure
     initSceneGraph();
