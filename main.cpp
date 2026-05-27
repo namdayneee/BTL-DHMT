@@ -16,21 +16,13 @@ using namespace std;
 #define STUDENT_NAME "Nguyen Dinh Nam"
 #define STUDENT_ID   "2212136"
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+const float PI = 3.141592653589793f;
 
 // =============================================================================
 // CAU TRUC DU LIEU MESH
 // =============================================================================
-struct Point3 {
-    float x, y, z;
-};
-
-struct Face {
-    vector<int> vIndices;
-    float nx, ny, nz;
-};
+struct Point3 { float x, y, z; };
+struct Face { vector<int> vIndices; float nx, ny, nz; };
 
 class Mesh {
 public:
@@ -39,16 +31,14 @@ public:
     vector<Face> faces;
 
     void draw(bool smooth) {
-        for (int i = 0; i < (int)faces.size(); ++i) {
+        for (size_t i = 0; i < faces.size(); ++i) {
             Face &f = faces[i];
-            if (f.vIndices.size() < 3) {
-                continue;
-            }
-            glBegin(GL_POLYGON);
-            if (!smooth) {
-                glNormal3f(f.nx, f.ny, f.nz);
-            }
-            for (int j = 0; j < (int)f.vIndices.size(); ++j) {
+            if (f.vIndices.size() < 3) continue;
+
+            glBegin(GL_TRIANGLES);
+            if (!smooth) glNormal3f(f.nx, f.ny, f.nz);
+
+            for (size_t j = 0; j < f.vIndices.size(); ++j) {
                 int vid = f.vIndices[j];
                 if (smooth && vid >= 0 && vid < (int)vertexNormals.size()) {
                     const Point3 &vn = vertexNormals[vid];
@@ -62,514 +52,490 @@ public:
     }
 
     void calculateNormals() {
-        vertexNormals.assign(vertices.size(), Point3{0.0f, 0.0f, 0.0f});
+        Point3 zeroP;
+        zeroP.x = 0.0f; zeroP.y = 0.0f; zeroP.z = 0.0f;
+        vertexNormals.assign(vertices.size(), zeroP);
 
-        for (int i = 0; i < (int)faces.size(); ++i) {
+        for (size_t i = 0; i < faces.size(); ++i) {
             Face &f = faces[i];
-            if (f.vIndices.size() < 3) {
-                continue;
-            }
+            if (f.vIndices.size() < 3) continue;
+
             Point3 v1 = vertices[f.vIndices[0]];
             Point3 v2 = vertices[f.vIndices[1]];
             Point3 v3 = vertices[f.vIndices[2]];
 
-            float ax = v2.x - v1.x;
-            float ay = v2.y - v1.y;
-            float az = v2.z - v1.z;
-            float bx = v3.x - v1.x;
-            float by = v3.y - v1.y;
-            float bz = v3.z - v1.z;
+            float ax = v2.x - v1.x, ay = v2.y - v1.y, az = v2.z - v1.z;
+            float bx = v3.x - v1.x, by = v3.y - v1.y, bz = v3.z - v1.z;
 
             f.nx = ay * bz - az * by;
             f.ny = az * bx - ax * bz;
             f.nz = ax * by - ay * bx;
 
-            float len = (float)sqrt(f.nx * f.nx + f.ny * f.ny + f.nz * f.nz);
-            if (len > 1e-6f) {
-                f.nx /= len;
-                f.ny /= len;
-                f.nz /= len;
-            }
+            float len = sqrtf(f.nx * f.nx + f.ny * f.ny + f.nz * f.nz);
+            if (len > 1e-6f) { f.nx /= len; f.ny /= len; f.nz /= len; }
 
-            for (int j = 0; j < (int)f.vIndices.size(); ++j) {
+            for (size_t j = 0; j < f.vIndices.size(); ++j) {
                 int vid = f.vIndices[j];
-                if (vid >= 0 && vid < (int)vertexNormals.size()) {
-                    vertexNormals[vid].x += f.nx;
-                    vertexNormals[vid].y += f.ny;
-                    vertexNormals[vid].z += f.nz;
-                }
+                vertexNormals[vid].x += f.nx;
+                vertexNormals[vid].y += f.ny;
+                vertexNormals[vid].z += f.nz;
             }
         }
 
-        for (int i = 0; i < (int)vertexNormals.size(); ++i) {
-            float len = (float)sqrt(
-                vertexNormals[i].x * vertexNormals[i].x +
-                vertexNormals[i].y * vertexNormals[i].y +
-                vertexNormals[i].z * vertexNormals[i].z
-            );
+        for (size_t i = 0; i < vertexNormals.size(); ++i) {
+            float len = sqrtf(pow(vertexNormals[i].x, 2) + pow(vertexNormals[i].y, 2) + pow(vertexNormals[i].z, 2));
             if (len > 1e-6f) {
-                vertexNormals[i].x /= len;
-                vertexNormals[i].y /= len;
-                vertexNormals[i].z /= len;
+                vertexNormals[i].x /= len; vertexNormals[i].y /= len; vertexNormals[i].z /= len;
             } else {
-                vertexNormals[i].x = 0.0f;
                 vertexNormals[i].y = 1.0f;
-                vertexNormals[i].z = 0.0f;
             }
         }
     }
 };
 
 // =============================================================================
-// KHAI BAO BIEN TOAN CUC
-// =============================================================================
-float base_rot = 0.0f;
-float g1_rot = 0.0f;
-float g2_rot = 0.0f;
-float rotor_rot = 0.0f;
-
-float cam_angle = 15.0f;
-float cam_height = 23.0f;
-float cam_dis = 55.0f;
-
-bool smooth_shading = false;
-
-// Cac thong so kich thuoc
-static const float BASE_SMALL_R = 0.5f;
-static const float BASE_SMALL_H = 3.0f;
-static const float BASE_BIG_R   = 4.5f;
-static const float BASE_BIG_H   = 1.0f;
-
-static const float G2_R = 6.0f;
-static const float G2_r = 0.5f;
-
-static const float G1_R = 8.0f;
-static const float G1_r = 0.5f;
-
-static const float FRAME_R = 11.3f;
-static const float FRAME_r = 0.5f;
-
-static const float FP_R = 0.55f;
-static const float FP_H = (FRAME_R - G1_R);
-
-static const float G1P_R = 0.50f;
-static const float G1P_H = (G1_R - G2_R);
-
-static const float AX_R = 0.35f;
-static const float LOGO_R = (G2_R - G2_r) * 0.85f;
-static const float DEV_Y = BASE_SMALL_H + BASE_BIG_H + FRAME_R;
-
-// Mesh objects
-Mesh mBaseS, mBaseB, mFrTor, mFrPin, mG1Tor, mG1Pin, mG2Tor, mAxis;
-
-// =============================================================================
-// HAM TAO HINH HOC CO BAN
+// HAM TAO HINH HOC
 // =============================================================================
 Mesh createTorus(float inR, float outR, int sides, int rings) {
     Mesh m;
     for (int i = 0; i <= rings; ++i) {
-        float phi = (float)(2.0 * M_PI * i / rings);
+        float u = (float)i * 2.0f * PI / rings;
+        float cu = cosf(u), su = sinf(u);
         for (int j = 0; j <= sides; ++j) {
-            float theta = (float)(2.0 * M_PI * j / sides);
-            float r = outR + inR * (float)cos(theta);
+            float v = (float)j * 2.0f * PI / sides;
+            float cv = cosf(v), sv = sinf(v);
             Point3 p;
-            p.x = r * (float)cos(phi);
-            p.y = inR * (float)sin(theta);
-            p.z = r * (float)sin(phi);
+            p.x = (outR + inR * cv) * cu;
+            p.y = inR * sv;
+            p.z = (outR + inR * cv) * su;
             m.vertices.push_back(p);
         }
     }
 
     for (int i = 0; i < rings; ++i) {
         for (int j = 0; j < sides; ++j) {
-            int cur = i * (sides + 1) + j;
-            int nxt = (i + 1) * (sides + 1) + j;
-            Face f;
-            f.vIndices.push_back(cur);
-            f.vIndices.push_back(nxt);
-            f.vIndices.push_back(nxt + 1);
-            f.vIndices.push_back(cur + 1);
-            m.faces.push_back(f);
+            int p0 = i * (sides + 1) + j;
+            int p1 = p0 + 1;
+            int p2 = (i + 1) * (sides + 1) + j;
+            int p3 = p2 + 1;
+
+            Face f1, f2;
+            f1.vIndices.push_back(p0); f1.vIndices.push_back(p1); f1.vIndices.push_back(p3);
+            f2.vIndices.push_back(p0); f2.vIndices.push_back(p3); f2.vIndices.push_back(p2);
+            m.faces.push_back(f1);
+            m.faces.push_back(f2);
         }
     }
-
     m.calculateNormals();
     return m;
 }
 
 Mesh createCappedCylinder(float rad, float h, int seg) {
     Mesh m;
+    int topCenterIdx = 0;
+    int botCenterIdx = 1;
+
+    Point3 pTopC; pTopC.x = 0.0f; pTopC.y = h; pTopC.z = 0.0f;
+    Point3 pBotC; pBotC.x = 0.0f; pBotC.y = 0.0f; pBotC.z = 0.0f;
+    m.vertices.push_back(pTopC);
+    m.vertices.push_back(pBotC);
+
+    int offset = 2;
     for (int i = 0; i < seg; ++i) {
-        float a = (float)(2.0 * M_PI * i / seg);
-        float x = rad * (float)cos(a);
-        float z = rad * (float)sin(a);
-        Point3 pTop;
-        pTop.x = x;
-        pTop.y = h;
-        pTop.z = z;
-        Point3 pBot;
-        pBot.x = x;
-        pBot.y = 0.0f;
-        pBot.z = z;
+        float a = (float)(2.0 * PI * i / seg);
+        Point3 pTop; pTop.x = rad * cosf(a); pTop.y = h; pTop.z = rad * sinf(a);
+        Point3 pBot; pBot.x = rad * cosf(a); pBot.y = 0.0f; pBot.z = rad * sinf(a);
         m.vertices.push_back(pTop);
         m.vertices.push_back(pBot);
     }
 
     for (int i = 0; i < seg; ++i) {
-        int next = (i + 1) % seg;
-        Face side;
-        side.vIndices.push_back(2 * i);
-        side.vIndices.push_back(2 * i + 1);
-        side.vIndices.push_back(2 * next + 1);
-        side.vIndices.push_back(2 * next);
-        m.faces.push_back(side);
-    }
+        int currTop = offset + i * 2;
+        int currBot = currTop + 1;
+        int nextTop = offset + ((i + 1) % seg) * 2;
+        int nextBot = nextTop + 1;
 
-    Face top;
-    for (int i = seg - 1; i >= 0; --i) {
-        top.vIndices.push_back(2 * i);
-    }
-    m.faces.push_back(top);
+        Face fSide1, fSide2, fTop, fBot;
 
-    Face bottom;
-    for (int i = 0; i < seg; ++i) {
-        bottom.vIndices.push_back(2 * i + 1);
-    }
-    m.faces.push_back(bottom);
+        fSide1.vIndices.push_back(currTop);
+        fSide1.vIndices.push_back(currBot);
+        fSide1.vIndices.push_back(nextBot);
 
+        fSide2.vIndices.push_back(currTop);
+        fSide2.vIndices.push_back(nextBot);
+        fSide2.vIndices.push_back(nextTop);
+
+        fTop.vIndices.push_back(topCenterIdx);
+        fTop.vIndices.push_back(currTop);
+        fTop.vIndices.push_back(nextTop);
+
+        fBot.vIndices.push_back(botCenterIdx);
+        fBot.vIndices.push_back(nextBot);
+        fBot.vIndices.push_back(currBot);
+
+        m.faces.push_back(fSide1);
+        m.faces.push_back(fSide2);
+        m.faces.push_back(fTop);
+        m.faces.push_back(fBot);
+    }
     m.calculateNormals();
     return m;
 }
 
-void setDeviceColor(float r, float g, float b, float shin = 64.0f) {
-    float amb[4] = {r*0.35f, g*0.35f, b*0.35f, 1.0f};
+void setDeviceColor(float r, float g, float b, float shin = 50.0f) {
+    float amb[4] = {r*0.4f, g*0.4f, b*0.4f, 1.0f};
     float dif[4] = {r, g, b, 1.0f};
-    float spe[4] = {0.70f, 0.70f, 0.70f, 1.0f};
-    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT,   amb);
-    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE,   dif);
-    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,  spe);
+    float spe[4] = {0.65f, 0.65f, 0.65f, 1.0f};
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, amb);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, dif);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, spe);
     glMaterialf (GL_FRONT_AND_BACK, GL_SHININESS, shin);
 }
 
 // =============================================================================
-// HAM VE LOGO VA MAT SAN
+// OBJECT-ORIENTED SCENE GRAPH
 // =============================================================================
-void extrudePolygonXZ(const vector<pair<float,float> > &pts, float thickness) {
-    int n = (int)pts.size();
-    float y0 = -thickness * 0.5f;
-    float y1 =  thickness * 0.5f;
+class SceneNode {
+public:
+    Mesh* mesh;
+    float color[3];
+    float tx, ty, tz;
+    float rx, ry, rz;
+    float* dynamicRot;
+    float drX, drY, drZ;
+    vector<SceneNode*> children;
 
-    float cx = 0, cz = 0;
-    for (int i = 0; i < n; i++) {
-        cx += pts[i].first; cz += pts[i].second;
+    SceneNode(Mesh* m = NULL) : mesh(m), tx(0), ty(0), tz(0),
+                                   rx(0), ry(0), rz(0), dynamicRot(NULL),
+                                   drX(0), drY(0), drZ(0) {
+        color[0] = color[1] = color[2] = 1.0f;
     }
-    cx /= n; cz /= n;
 
-    glNormal3f(0.0f, 1.0f, 0.0f);
+    void setColor(float r, float g, float b) { color[0] = r; color[1] = g; color[2] = b; }
+    void setTransform(float x, float y, float z) { tx = x; ty = y; tz = z; }
+    void setStaticRot(float x, float y, float z) { rx = x; ry = y; rz = z; }
+    void setDynamicRot(float* ptr, float x, float y, float z) { dynamicRot = ptr; drX = x; drY = y; drZ = z; }
+    void addChild(SceneNode* child) { children.push_back(child); }
+
+    void drawTree(bool smooth) {
+        glPushMatrix();
+        glTranslatef(tx, ty, tz);
+
+        if (rx != 0.0f) glRotatef(rx, 1, 0, 0);
+        if (ry != 0.0f) glRotatef(ry, 0, 1, 0);
+        if (rz != 0.0f) glRotatef(rz, 0, 0, 1);
+
+        if (dynamicRot && *dynamicRot != 0.0f) glRotatef(*dynamicRot, drX, drY, drZ);
+
+        if (mesh) {
+            setDeviceColor(color[0], color[1], color[2]);
+            mesh->draw(smooth);
+        }
+
+        for (size_t i = 0; i < children.size(); ++i) {
+            children[i]->drawTree(smooth);
+        }
+        glPopMatrix();
+    }
+};
+
+// =============================================================================
+// GLOBAL CONFIG & VARIABLES
+// =============================================================================
+float base_rot = 0.0f, g1_rot = 0.0f, g2_rot = 0.0f, rotor_rot = 0.0f;
+float cam_angle = 25.0f, cam_height = 28.0f, cam_dis = 60.0f;
+bool smooth_shading = false; // Mac dinh la to mau phang (Flat shading)
+
+struct Config {
+    float bSmallR, bSmallH;
+    float bBigR, bBigH;
+    float g2R, g2r;
+    float g1R, g1r;
+    float frR, frr;
+    float fpR;
+    float g1pR;
+    float axR;
+
+    Config() {
+        bSmallR = 0.65f; bSmallH = 3.2f;
+        bBigR = 4.8f;    bBigH = 1.2f;
+        g2R = 6.4f;      g2r = 0.55f;
+        g1R = 8.6f;      g1r = 0.55f;
+        frR = 12.0f;     frr = 0.55f;
+        fpR = 0.6f;
+        g1pR = 0.55f;
+        axR = 0.4f;
+    }
+} cfg;
+
+Mesh mBaseS, mBaseB, mFrTor, mFrPin, mG1Tor, mG1Pin, mG2Tor, mAxis;
+SceneNode* rootNode = NULL;
+
+// =============================================================================
+// VE LA BAN & LOGO TAI TRONG TAM
+// =============================================================================
+void drawLocalPrism(float hexR, float thickness, float rC, float gC, float bC, int startIdx, int endIdx) {
+    setDeviceColor(rC, gC, bC);
+    float yTop = thickness * 0.5f, yBot = -thickness * 0.5f;
+
     glBegin(GL_TRIANGLE_FAN);
-    glVertex3f(cx, y1, cz);
-    for (int i = 0; i <= n; i++) {
-        const pair<float,float> &p = pts[(n-i)%n];
-        glVertex3f(p.first, y1, p.second);
+    glNormal3f(0.0f, 1.0f, 0.0f);
+    glVertex3f(0.0f, yTop, 0.0f);
+    for(int i = startIdx; i <= endIdx; ++i) {
+        float a = i * PI / 3.0f;
+        glVertex3f(hexR * cosf(a), yTop, hexR * sinf(a));
     }
     glEnd();
 
-    glNormal3f(0.0f, -1.0f, 0.0f);
     glBegin(GL_TRIANGLE_FAN);
-    glVertex3f(cx, y0, cz);
-    for (int i = 0; i <= n; i++) {
-        const pair<float,float> &p = pts[i%n];
-        glVertex3f(p.first, y0, p.second);
+    glNormal3f(0.0f, -1.0f, 0.0f);
+    glVertex3f(0.0f, yBot, 0.0f);
+    for(int i = endIdx; i >= startIdx; --i) {
+        float a = i * PI / 3.0f;
+        glVertex3f(hexR * cosf(a), yBot, hexR * sinf(a));
     }
     glEnd();
 
     glBegin(GL_QUADS);
-    for (int i = 0; i < n; i++) {
-        const pair<float,float> &p0 = pts[i];
-        const pair<float,float> &p1 = pts[(i+1)%n];
-        float dx = p1.first - p0.first;
-        float dz = p1.second - p0.second;
-        float nx = dz, nz = -dx;
+    for(int i = startIdx; i < endIdx; ++i) {
+        float a1 = i * PI / 3.0f, a2 = (i + 1) * PI / 3.0f;
+        float x1 = hexR * cosf(a1), z1 = hexR * sinf(a1);
+        float x2 = hexR * cosf(a2), z2 = hexR * sinf(a2);
+        float nx = z2 - z1, nz = -(x2 - x1);
         float len = sqrtf(nx*nx + nz*nz);
-        if (len > 1e-6f) { nx /= len; nz /= len; }
-        glNormal3f(nx, 0.0f, nz);
-        glVertex3f(p0.first, y0, p0.second);
-        glVertex3f(p0.first, y1, p0.second);
-        glVertex3f(p1.first, y1, p1.second);
-        glVertex3f(p1.first, y0, p1.second);
+        glNormal3f(nx/len, 0.0f, nz/len);
+
+        glVertex3f(x1, yBot, z1);
+        glVertex3f(x1, yTop, z1);
+        glVertex3f(x2, yTop, z2);
+        glVertex3f(x2, yBot, z2);
     }
     glEnd();
 }
 
-void drawCenterLogo(float R) {
-    const float LB[3] = {20.f/255.f, 136.f/255.f, 219.f/255.f};
-    const float DB[3] = { 3.f/255.f,  43.f/255.f, 145.f/255.f};
+void drawDynamicLogo() {
+    float logoR = (cfg.g2R - cfg.g2r) * 0.85f;
+    float hexR = logoR * 0.42f;
+    float thic = 0.59f;
 
-    float hex_r = R * 0.42f;
-    float big_r = hex_r;
-    const float HEX_THICKNESS = 0.59f;
+    // Center White
+    drawLocalPrism(hexR, 0.6f, 1.0f, 1.0f, 1.0f, 0, 6);
 
-    for (int k = 0; k < 3; k++) {
-        float base_angle = (float)(M_PI/2) + k*(float)(2.0*M_PI/3.0);
-        float cx = hex_r * cosf(base_angle);
-        float cz = hex_r * sinf(base_angle);
+    for(int k = 0; k < 3; ++k) {
+        glPushMatrix();
+        glRotatef(k * 120.0f + 90.0f, 0.0f, 1.0f, 0.0f);
+        glTranslatef(hexR, 0.0f, 0.0f);
 
-        vector<pair<float,float> > hex;
-        for (int i = 0; i < 6; i++) {
-            float a = base_angle + i*(float)(M_PI/3);
-            hex.push_back(make_pair(cx + big_r*cosf(a), cz + big_r*sinf(a)));
-        }
+        // Dark Blue Lobe
+        drawLocalPrism(hexR, thic, 3.f/255.f, 43.f/255.f, 145.f/255.f, 0, 3);
+        // Light Blue Lobe
+        drawLocalPrism(hexR, thic, 20.f/255.f, 136.f/255.f, 219.f/255.f, 3, 6);
 
-        {
-            vector<pair<float,float> > h;
-            h.push_back(make_pair(cx, cz));
-            h.push_back(hex[0]); h.push_back(hex[1]);
-            h.push_back(hex[2]); h.push_back(hex[3]);
-            setDeviceColor(DB[0], DB[1], DB[2]);
-            extrudePolygonXZ(h, HEX_THICKNESS);
-        }
-        {
-            vector<pair<float,float> > h;
-            h.push_back(make_pair(cx, cz));
-            h.push_back(hex[3]); h.push_back(hex[4]);
-            h.push_back(hex[5]); h.push_back(hex[0]);
-            setDeviceColor(LB[0], LB[1], LB[2]);
-            extrudePolygonXZ(h, HEX_THICKNESS);
-        }
+        glPopMatrix();
     }
-
-    setDeviceColor(1.0f, 1.0f, 1.0f);
-    vector<pair<float,float> > hc;
-    for (int i = 0; i < 6; i++) {
-        float a = (float)(M_PI/2) + i*(float)(M_PI/3);
-        hc.push_back(make_pair(hex_r*cosf(a), hex_r*sinf(a)));
-    }
-    extrudePolygonXZ(hc, 0.6f);
 }
 
-void tileRing(float cx, float cz, float rIn, float rOut, int segs, float Y) {
+void drawCompassRing(float inR, float outR, float y) {
     glNormal3f(0.0f, 1.0f, 0.0f);
-    glBegin(GL_TRIANGLE_STRIP);
-    for (int i = 0; i <= segs; i++) {
-        float a = (float)(2.0*M_PI*i/segs);
-        float c = cosf(a), s = sinf(a);
-        glVertex3f(cx + rOut*c, Y, cz + rOut*s);
-        glVertex3f(cx + rIn*c,  Y, cz + rIn*s);
+    glBegin(GL_QUAD_STRIP);
+    for (int i = 0; i <= 48; i++) {
+        float a = i * (PI * 2.0f / 48.0f);
+        glVertex3f(inR * cosf(a), y, inR * sinf(a));
+        glVertex3f(outR * cosf(a), y, outR * sinf(a));
     }
     glEnd();
 }
 
-void drawCompassRose(float cx, float cz, float R) {
-    const float Y0 = 0.005f;
-    const float Y3 = 0.030f;
-    const float Y4 = 0.0f,   Y5 = 0.050f;
+void drawNewCompassRose(float R) {
+    float outerD = R * 1.0368f;
+    float inTip = R * 0.54f;
 
-    const float TAN_R = 222.f/255.f, TAN_G = 192.f/255.f, TAN_B = 140.f/255.f;
-    const float BRN_R =  99.f/255.f, BRN_G =  70.f/255.f, BRN_B =  42.f/255.f;
-    const int SEG = 48;
+    float outerHW = (outerD * 0.5f) * tanf(PI / 8.0f);
+    float inW = inTip * tanf(PI / 16.0f);
 
-    float inTip   = R * 0.54f;
-    float inW     = inTip * 0.1989f;
-    float outerD  = inTip * 1.92f;
-    float outerHW = (outerD * 0.5f) * 0.41421f;
-
-    float decOut1 = R * 1.08f, decIn1  = R * 0.99f;
     glColor3f(0.68f, 0.68f, 0.68f);
-    tileRing(cx, cz, decIn1, decOut1, SEG, Y0);
-
-    float decOut2 = R * 0.86f, decIn2  = R * 0.77f;
-    glColor3f(0.68f, 0.68f, 0.68f);
-    tileRing(cx, cz, decIn2, decOut2, SEG, Y4);
-
-    for (int i = 0; i < 8; i++) {
-        float a  = (45.0f * i) * (float)(M_PI/180.0f);
-        float da = (float)(M_PI * 0.5f);
-
-        float inX = cx, inZ = cz;
-        float outX = cx + outerD * cosf(a), outZ = cz + outerD * sinf(a);
-        float midX = cx + (outerD*0.5f) * cosf(a), midZ = cz + (outerD*0.5f) * sinf(a);
-        float lftX = midX + outerHW * cosf(a+da), lftZ = midZ + outerHW * sinf(a+da);
-        float rgtX = midX + outerHW * cosf(a-da), rgtZ = midZ + outerHW * sinf(a-da);
-
-        if (i % 2 == 0) glColor3f(TAN_R, TAN_G, TAN_B);
-        else             glColor3f(BRN_R, BRN_G, BRN_B);
-
-        glNormal3f(0.0f, 1.0f, 0.0f);
-        glBegin(GL_QUADS);
-        glVertex3f(inX,  Y3, inZ); glVertex3f(lftX, Y3, lftZ);
-        glVertex3f(outX, Y3, outZ); glVertex3f(rgtX, Y3, rgtZ);
-        glEnd();
-    }
+    drawCompassRing(R * 0.99f, R * 1.08f, 0.005f);
+    drawCompassRing(R * 0.77f, R * 0.86f, 0.0f);
 
     glNormal3f(0.0f, 1.0f, 0.0f);
-    for (int i = 0; i < 8; i++) {
-        float a       = (45.0f*i + 22.5f) * (float)(M_PI/180.0f);
-        float da      = (float)(M_PI * 0.5f);
-        float midDist = inTip * 0.5f;
+    for (int i = 0; i < 8; ++i) {
+        glPushMatrix();
+        glRotatef(i * 45.0f, 0.0f, 1.0f, 0.0f);
 
-        float tipX   = cx + inTip * cosf(a), tipZ = cz + inTip * sinf(a);
-        float baseX  = cx, baseZ = cz;
-        float leftX  = cx + midDist*cosf(a) + inW*cosf(a+da), leftZ  = cz + midDist*sinf(a) + inW*sinf(a+da);
-        float rightX = cx + midDist*cosf(a) + inW*cosf(a-da), rightZ = cz + midDist*sinf(a) + inW*sinf(a-da);
+        if (i % 2 == 0) glColor3f(222.f/255.f, 192.f/255.f, 140.f/255.f);
+        else            glColor3f(99.f/255.f, 70.f/255.f, 42.f/255.f);
 
-        glColor3f(1.00f, 1.00f, 1.00f);
         glBegin(GL_TRIANGLES);
-        glVertex3f(tipX,  Y5, tipZ); glVertex3f(leftX, Y5, leftZ); glVertex3f(baseX, Y5, baseZ);
+        glVertex3f(0.0f, 0.03f, 0.0f);
+        glVertex3f(outerD * 0.5f, 0.03f, outerHW);
+        glVertex3f(outerD, 0.03f, 0.0f);
+
+        glVertex3f(0.0f, 0.03f, 0.0f);
+        glVertex3f(outerD, 0.03f, 0.0f);
+        glVertex3f(outerD * 0.5f, 0.03f, -outerHW);
         glEnd();
 
-        glColor3f(0.05f, 0.05f, 0.05f);
+        // Inner star
+        glColor3f(1.0f, 1.0f, 1.0f); // White half
         glBegin(GL_TRIANGLES);
-        glVertex3f(tipX,  Y5, tipZ); glVertex3f(baseX, Y5, baseZ); glVertex3f(rightX,Y5, rightZ);
+        glVertex3f(0.0f, 0.05f, 0.0f);
+        glVertex3f(inTip * 0.5f, 0.05f, inW);
+        glVertex3f(inTip, 0.05f, 0.0f);
         glEnd();
+
+        glColor3f(0.05f, 0.05f, 0.05f); // Black half
+        glBegin(GL_TRIANGLES);
+        glVertex3f(0.0f, 0.05f, 0.0f);
+        glVertex3f(inTip, 0.05f, 0.0f);
+        glVertex3f(inTip * 0.5f, 0.05f, -inW);
+        glEnd();
+
+        glPopMatrix();
     }
 }
 
 void drawFloor() {
-    const int   N = 20;
+    const int N = 20;
     const float T = 4.0f;
     const float H = N * T * 0.5f;
     const float R = T * 0.48f;
 
     glDisable(GL_LIGHTING);
     glDisable(GL_COLOR_MATERIAL);
-    glNormal3f(0.0f, 1.0f, 0.0f);
 
     for (int r = 0; r < N; r++) {
         for (int c = 0; c < N; c++) {
-            float x0 = -H + c*T, z0 = -H + r*T;
-            float x1 = x0+T,     z1 = z0+T;
-            float cx = (x0+x1)*0.5f, cz = (z0+z1)*0.5f;
-            drawCompassRose(cx, cz, R);
+            float cx = -H + c*T + T*0.5f;
+            float cz = -H + r*T + T*0.5f;
+
+            glPushMatrix();
+            glTranslatef(cx, 0.0f, cz);
+            drawNewCompassRose(R);
+            glPopMatrix();
         }
     }
     glEnable(GL_LIGHTING);
 }
 
 // =============================================================================
-// HAM VE CHINH
+// HAM KHOI TAO HIERARCHY
+// =============================================================================
+void initSceneGraph() {
+    rootNode = new SceneNode();
+
+    SceneNode* pivotBase = new SceneNode();
+    pivotBase->setDynamicRot(&base_rot, 0, 1, 0);
+    rootNode->addChild(pivotBase);
+
+    SceneNode* nBaseB = new SceneNode(&mBaseB);
+    nBaseB->setColor(1.0f, 0.1f, 0.1f);
+    pivotBase->addChild(nBaseB);
+
+    SceneNode* nBaseS = new SceneNode(&mBaseS);
+    nBaseS->setColor(1.0f, 0.1f, 0.1f);
+    nBaseS->setTransform(0, cfg.bBigH, 0);
+    pivotBase->addChild(nBaseS);
+
+    float devY = cfg.bSmallH + cfg.bBigH + cfg.frR;
+    SceneNode* pivotFrame = new SceneNode();
+    pivotFrame->setTransform(0, devY, 0);
+    pivotBase->addChild(pivotFrame);
+
+    SceneNode* nFrTor = new SceneNode(&mFrTor);
+    nFrTor->setColor(1.0f, 0.1f, 0.1f);
+    nFrTor->setStaticRot(90.0f, 0, 0);
+    pivotFrame->addChild(nFrTor);
+
+    SceneNode* nFrPin1 = new SceneNode(&mFrPin);
+    nFrPin1->setColor(1.0f, 0.1f, 0.1f);
+    nFrPin1->setTransform(cfg.g1R, 0, 0);
+    nFrPin1->setStaticRot(0, 0, -90.0f);
+    pivotFrame->addChild(nFrPin1);
+
+    SceneNode* nFrPin2 = new SceneNode(&mFrPin);
+    nFrPin2->setColor(1.0f, 0.1f, 0.1f);
+    nFrPin2->setTransform(-cfg.g1R - (cfg.frR - cfg.g1R), 0, 0);
+    nFrPin2->setStaticRot(0, 0, -90.0f);
+    pivotFrame->addChild(nFrPin2);
+
+    SceneNode* pivotG1 = new SceneNode();
+    pivotG1->setDynamicRot(&g1_rot, 1, 0, 0);
+    pivotFrame->addChild(pivotG1);
+
+    SceneNode* nG1Tor = new SceneNode(&mG1Tor);
+    nG1Tor->setColor(0.1f, 0.3f, 1.0f);
+    nG1Tor->setStaticRot(90.0f, 0, 0);
+    pivotG1->addChild(nG1Tor);
+
+    SceneNode* nG1Pin1 = new SceneNode(&mG1Pin);
+    nG1Pin1->setColor(0.1f, 0.3f, 1.0f);
+    nG1Pin1->setTransform(0, cfg.g2R, 0);
+    pivotG1->addChild(nG1Pin1);
+
+    SceneNode* nG1Pin2 = new SceneNode(&mG1Pin);
+    nG1Pin2->setColor(0.1f, 0.3f, 1.0f);
+    nG1Pin2->setTransform(0, -cfg.g2R - (cfg.g1R - cfg.g2R), 0);
+    pivotG1->addChild(nG1Pin2);
+
+    SceneNode* pivotG2 = new SceneNode();
+    pivotG2->setDynamicRot(&g2_rot, 0, 1, 0);
+    pivotG1->addChild(pivotG2);
+
+    SceneNode* nG2Tor = new SceneNode(&mG2Tor);
+    nG2Tor->setColor(0.1f, 1.0f, 0.2f);
+    nG2Tor->setStaticRot(90.0f, 0, 0);
+    pivotG2->addChild(nG2Tor);
+
+    SceneNode* nAxis = new SceneNode(&mAxis);
+    nAxis->setColor(0.1f, 1.0f, 0.2f);
+    nAxis->setTransform(-cfg.g2R, 0, 0);
+    nAxis->setStaticRot(0, 0, -90.0f);
+    pivotG2->addChild(nAxis);
+
+    SceneNode* pivotRotor = new SceneNode();
+    pivotRotor->setDynamicRot(&rotor_rot, 1, 0, 0);
+    pivotG2->addChild(pivotRotor);
+}
+
+// =============================================================================
+// HAM VE CHINH & MAIN
 // =============================================================================
 void display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    // Dinh vi camera
-    float rad_a = cam_angle * (float)(M_PI / 180.0);
+    float rad_a = cam_angle * (PI / 180.0f);
     float eyeX = cam_dis * sinf(rad_a);
     float eyeZ = cam_dis * cosf(rad_a);
-    gluLookAt(eyeX, cam_height, eyeZ,  0.0, DEV_Y, 0.0,  0.0, 1.0, 0.0);
+    float devY = cfg.bSmallH + cfg.bBigH + cfg.frR;
+    gluLookAt(eyeX, cam_height, eyeZ, 0.0, devY, 0.0, 0.0, 1.0, 0.0);
 
     glShadeModel(smooth_shading ? GL_SMOOTH : GL_FLAT);
 
-    // Thiet lap anh sang
-    glEnable(GL_LIGHTING);
-    glEnable(GL_LIGHT0);
-    glEnable(GL_LIGHT1);
-    glEnable(GL_LIGHT2);
+    glEnable(GL_LIGHTING); glEnable(GL_LIGHT0); glEnable(GL_LIGHT1); glEnable(GL_LIGHT2);
 
-    float p0[4] = {15.0f, 40.0f, 15.0f, 1.0f}, a0[4] = {0.30f, 0.30f, 0.30f, 1.0f}, d0[4] = {1.00f, 0.95f, 0.90f, 1.0f}, s0[4] = {1.00f, 1.00f, 1.00f, 1.0f};
-    glLightfv(GL_LIGHT0, GL_POSITION, p0); glLightfv(GL_LIGHT0, GL_AMBIENT,  a0); glLightfv(GL_LIGHT0, GL_DIFFUSE,  d0); glLightfv(GL_LIGHT0, GL_SPECULAR, s0);
+    float p0[4] = {20.0f, 45.0f, 20.0f, 1.0f}, a0[4] = {0.35f, 0.35f, 0.35f, 1.0f}, d0[4] = {1.0f, 0.98f, 0.95f, 1.0f}, s0[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glLightfv(GL_LIGHT0, GL_POSITION, p0); glLightfv(GL_LIGHT0, GL_AMBIENT, a0); glLightfv(GL_LIGHT0, GL_DIFFUSE, d0); glLightfv(GL_LIGHT0, GL_SPECULAR, s0);
 
-    float p1[4] = {-20.0f, 25.0f, -10.0f, 1.0f}, d1[4] = {0.55f, 0.60f, 0.75f, 1.0f}, s1[4] = {0.20f, 0.20f, 0.20f, 1.0f};
-    glLightfv(GL_LIGHT1, GL_POSITION, p1); glLightfv(GL_LIGHT1, GL_DIFFUSE,  d1); glLightfv(GL_LIGHT1, GL_SPECULAR, s1);
+    float p1[4] = {-25.0f, 30.0f, -15.0f, 1.0f}, d1[4] = {0.6f, 0.65f, 0.8f, 1.0f}, s1[4] = {0.3f, 0.3f, 0.3f, 1.0f};
+    glLightfv(GL_LIGHT1, GL_POSITION, p1); glLightfv(GL_LIGHT1, GL_DIFFUSE, d1); glLightfv(GL_LIGHT1, GL_SPECULAR, s1);
 
-    float p2[4] = {0.0f, -20.0f, 5.0f, 1.0f}, d2[4] = {0.20f, 0.20f, 0.22f, 1.0f}, s2[4] = {0.00f, 0.00f, 0.00f, 1.0f};
-    glLightfv(GL_LIGHT2, GL_POSITION, p2); glLightfv(GL_LIGHT2, GL_DIFFUSE,  d2); glLightfv(GL_LIGHT2, GL_SPECULAR, s2);
+    float p2[4] = {5.0f, -25.0f, 10.0f, 1.0f}, d2[4] = {0.25f, 0.25f, 0.28f, 1.0f}, s2[4] = {0.1f, 0.1f, 0.1f, 1.0f};
+    glLightfv(GL_LIGHT2, GL_POSITION, p2); glLightfv(GL_LIGHT2, GL_DIFFUSE, d2); glLightfv(GL_LIGHT2, GL_SPECULAR, s2);
 
     drawFloor();
 
-    // Ve thiet bi
-    glPushMatrix();
-
-    // Base rotates whole device around Y
-    glRotatef(base_rot, 0.0f, 1.0f, 0.0f);
-
-    // Base big cylinder (red)
-    setDeviceColor(1.0f, 0.0f, 0.0f);
-    mBaseB.draw(smooth_shading);
-
-    // Base small cylinder (red)
-    setDeviceColor(1.0f, 0.0f, 0.0f);
-    glPushMatrix();
-    glTranslatef(0.0f, BASE_BIG_H, 0.0f);
-    mBaseS.draw(smooth_shading);
-    glPopMatrix();
-
-    // move to device centre
-    glTranslatef(0.0f, DEV_Y, 0.0f);
-
-    // Frame torus (red)
-    setDeviceColor(1.0f, 0.0f, 0.0f);
-    glPushMatrix();
-    glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
-    mFrTor.draw(smooth_shading);
-    glPopMatrix();
-
-    // Frame pins (red) �X
-    glPushMatrix();
-    setDeviceColor(1.0f, 0.0f, 0.0f);
-    glTranslatef(G1_R, 0.0f, 0.0f);
-    glRotatef(-90.0f, 0.0f, 0.0f, 1.0f);
-    mFrPin.draw(smooth_shading);
-    glPopMatrix();
+    rootNode->drawTree(smooth_shading);
 
     glPushMatrix();
-    setDeviceColor(1.0f, 0.0f, 0.0f);
-    glTranslatef(-G1_R - FP_H, 0.0f, 0.0f);
-    glRotatef(-90.0f, 0.0f, 0.0f, 1.0f);
-    mFrPin.draw(smooth_shading);
-    glPopMatrix();
-
-    // Gimbal 1 rotates around X
-    glRotatef(g1_rot, 1.0f, 0.0f, 0.0f);
-
-    // Gimbal1 torus (blue)
-    setDeviceColor(0.0f, 0.0f, 1.0f);
-    glPushMatrix();
-    glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
-    mG1Tor.draw(smooth_shading);
-    glPopMatrix();
-
-    // Gimbal1 pins (blue) �Y
-    glPushMatrix();
-    setDeviceColor(0.0f, 0.0f, 1.0f);
-    glTranslatef(0.0f, G2_R, 0.0f);
-    mG1Pin.draw(smooth_shading);
-    glPopMatrix();
-
-    glPushMatrix();
-    setDeviceColor(0.0f, 0.0f, 1.0f);
-    glTranslatef(0.0f, -G2_R - G1P_H, 0.0f);
-    mG1Pin.draw(smooth_shading);
-    glPopMatrix();
-
-    // Gimbal 2 rotates around Y
-    glRotatef(g2_rot, 0.0f, 1.0f, 0.0f);
-
-    // Gimbal2 torus (green)
-    setDeviceColor(0.0f, 1.0f, 0.0f);
-    glPushMatrix();
-    glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
-    mG2Tor.draw(smooth_shading);
-    glPopMatrix();
-
-    // Axis cylinder (green), horizontal along X
-    setDeviceColor(0.0f, 1.0f, 0.0f);
-    glPushMatrix();
-    glTranslatef(-G2_R, 0.0f, 0.0f);
-    glRotatef(-90.0f, 0.0f, 0.0f, 1.0f);
-    mAxis.draw(smooth_shading);
-    glPopMatrix();
-
-    // Rotor rotates around X
-    glRotatef(rotor_rot, 1.0f, 0.0f, 0.0f);
-
-    // BK Logo disk
-    glPushMatrix();
+    glTranslatef(0, devY, 0);
+    glRotatef(base_rot, 0, 1, 0);
+    glRotatef(g1_rot, 1, 0, 0);
+    glRotatef(g2_rot, 0, 1, 0);
+    glRotatef(rotor_rot, 1, 0, 0);
     glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
-    drawCenterLogo(LOGO_R);
-    glPopMatrix();
-
+    drawDynamicLogo();
     glPopMatrix();
 
     glutSwapBuffers();
@@ -587,29 +553,29 @@ void reshape(int w, int h) {
 void keyboard(unsigned char key, int, int) {
     const float S = 5.0f;
     switch (key) {
-        case '1': 
-            base_rot += S; 
+        case '1':
+            base_rot += S;
             break;
-        case '2': 
-            base_rot -= S; 
+        case '2':
+            base_rot -= S;
             break;
-        case '3': 
-            g1_rot += S; 
+        case '3':
+            g1_rot += S;
             break;
-        case '4': 
-            g1_rot -= S; 
+        case '4':
+            g1_rot -= S;
             break;
-        case '5': 
-            g2_rot += S; 
+        case '5':
+            g2_rot += S;
             break;
-        case '6': 
-            g2_rot -= S; 
+        case '6':
+            g2_rot -= S;
             break;
-        case '7': 
-            rotor_rot += S; 
+        case '7':
+            rotor_rot += S;
             break;
-        case '8':  
-            rotor_rot -= S; 
+        case '8':
+            rotor_rot -= S;
             break;
 
         case 'r':
@@ -619,16 +585,14 @@ void keyboard(unsigned char key, int, int) {
 
         case 's':
         case 'S':
-            smooth_shading = !smooth_shading; // Bat/Tat che do Smooth Shading
+            smooth_shading = !smooth_shading;
             break;
 
         case '+':
-        case '=':
             cam_dis += 2.0f; // Tang khoang cach (Zoom out)
             break;
 
         case '-':
-        case '_':
             cam_dis -= 2.0f; // Giam khoang cach (Zoom in)
             if (cam_dis < 8.0f) cam_dis = 8.0f;
             break;
@@ -683,14 +647,18 @@ int main(int argc, char** argv) {
     glLightModelfv(GL_LIGHT_MODEL_AMBIENT, gAmb);
     glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE);
 
-    mBaseS = createCappedCylinder(BASE_SMALL_R, BASE_SMALL_H, 64);
-    mBaseB = createCappedCylinder(BASE_BIG_R,   BASE_BIG_H,   64);
-    mFrTor = createTorus(FRAME_r, FRAME_R, 36, 120);
-    mFrPin = createCappedCylinder(FP_R, FP_H, 32);
-    mG1Tor = createTorus(G1_r, G1_R, 36, 120);
-    mG1Pin = createCappedCylinder(G1P_R, G1P_H, 32);
-    mG2Tor = createTorus(G2_r, G2_R, 36, 120);
-    mAxis  = createCappedCylinder(AX_R, G2_R*2.0f, 32);
+    // Generate Meshes
+    mBaseS = createCappedCylinder(cfg.bSmallR, cfg.bSmallH, 64);
+    mBaseB = createCappedCylinder(cfg.bBigR, cfg.bBigH, 64);
+    mFrTor = createTorus(cfg.frr, cfg.frR, 36, 120);
+    mFrPin = createCappedCylinder(cfg.fpR, cfg.frR - cfg.g1R, 32);
+    mG1Tor = createTorus(cfg.g1r, cfg.g1R, 36, 120);
+    mG1Pin = createCappedCylinder(cfg.g1pR, cfg.g1R - cfg.g2R, 32);
+    mG2Tor = createTorus(cfg.g2r, cfg.g2R, 36, 120);
+    mAxis  = createCappedCylinder(cfg.axR, cfg.g2R * 2.0f, 32);
+
+    // Initialize Tree Structure
+    initSceneGraph();
 
     glutReshapeFunc(reshape);
     glutDisplayFunc(display);
