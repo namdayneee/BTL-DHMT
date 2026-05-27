@@ -318,8 +318,11 @@ void drawDynamicLogo() {
     float hexR = logoR * 0.42f;
     float thic = 0.59f;
 
-    // Center White
+    // Center White 
+    glPushMatrix();
+    glRotatef(30.0f, 0.0f, 1.0f, 0.0f);
     drawLocalPrism(hexR, 0.6f, 1.0f, 1.0f, 1.0f, 0, 6);
+    glPopMatrix();
 
     for(int k = 0; k < 3; ++k) {
         glPushMatrix();
