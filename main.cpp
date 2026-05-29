@@ -416,7 +416,7 @@ static void paintFloorTile(float px, float pz, float size) {
 }
 
 void drawFloor() {
-    const int   GRID = 24;
+    const int   GRID = 20;
     const float CELL = 3.5f;
     const float HALF = GRID * CELL * 0.5f;
 
